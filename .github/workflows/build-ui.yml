@@ -12,24 +12,30 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Create missing image stubs
+      - name: Patch missing image stubs
         shell: bash
         run: |
-          # The firmware references image assets that may not exist in the repo
-          # Create stub declarations so the build succeeds
-          cat > examples/factory_firmware/main/view/ui_img_stubs.c << 'STUBS'
-          #include "lvgl.h"
-          // Stub image descriptors for missing assets
-          const lv_img_dsc_t ui_img_speaking1_png = { .header.w = 0, .header.h = 0, .data_size = 0, .data = NULL };
-          const lv_img_dsc_t ui_img_speaking2_png = { .header.w = 0, .header.h = 0, .data_size = 0, .data = NULL };
-          STUBS
+          cd examples/factory_firmware
+          # Add extern declarations to app_png.c so the symbols are in scope
+          sed -i '1i extern const lv_img_dsc_t ui_img_speaking1_png;
+extern const lv_img_dsc_t ui_img_speaking2_png;' main/app/app_png.c
+          # Create a stub .c that defines the actual symbols
+          printf '#include "lvgl.h"
+const lv_img_dsc_t ui_img_speaking1_png = { .header.w = 0, .header.h = 0, .data_size = 0, .data = NULL };
+const lv_img_dsc_t ui_img_speaking2_png = { .header.w = 0, .header.h = 0, .data_size = 0, .data = NULL };
+' > main/app/ui_img_stubs.c
+          # Register the stub file in CMakeLists so it gets compiled
+          sed -i 's|"main/app/app_png.c"|"main/app/app_png.c" "main/app/ui_img_stubs.c"|' main/CMakeLists.txt
+          # Fallback: if exact match failed, try appending via idf_component_register SRCS
+          if ! grep -q 'ui_img_stubs.c' main/CMakeLists.txt; then
+            sed -i '/SRCS/s|)|"main/app/ui_img_stubs.c")|' main/CMakeLists.txt
+          fi
 
       - name: Build firmware
         shell: bash
         run: |
           . /opt/esp/idf/export.sh
           cd examples/factory_firmware
-          # Disable -Werror to handle warnings in upstream code
           export EXTRA_CFLAGS="-Wno-error"
           export EXTRA_CXXFLAGS="-Wno-error"
           idf.py set-target esp32s3
