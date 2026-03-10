@@ -9,8 +9,4 @@ void ui_Screen_1_screen_init(void) {
     lv_obj_set_size(ui_Screen_1, 240, 240);
 
 
-
-
-
-
 }
